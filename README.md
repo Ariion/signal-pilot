@@ -61,3 +61,20 @@ Add your Stripe price IDs and secret before enabling paid checkout.
 ## Important product constraint
 
 The score is an internal diagnostic metric, not a guarantee that an AI will recommend a business. It measures observable signals available to SignalPilot.
+
+
+## V1.1 additions
+
+The current branch now includes a real SaaS foundation: account/session auth, user-owned businesses, persistent scan history, persistent opportunities, a server dashboard, scan rate limiting, SSRF-aware crawling, and Stripe subscription Checkout/webhook boundaries.
+
+After configuring PostgreSQL and `AUTH_SECRET`, run:
+
+```bash
+npm install
+npm run prisma:generate
+npx prisma migrate dev --name v11
+npm run typecheck
+npm run build
+```
+
+Stripe subscriptions require `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, three recurring Price IDs, and `NEXT_PUBLIC_APP_URL`.

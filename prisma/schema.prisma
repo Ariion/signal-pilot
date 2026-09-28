@@ -7,8 +7,33 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  passwordHash String
+  name         String?
+  plan         String         @default("free")
+  stripeCustomerId String?    @unique
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  businesses   Business[]
+  sessions     Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([expiresAt])
+}
+
 model Business {
   id          String   @id @default(cuid())
+  userId      String?
   name        String
   domain      String   @unique
   url         String
@@ -20,10 +45,11 @@ model Business {
   score       Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   scans        Scan[]
   opportunities Opportunity[]
   promptRuns    PromptRun[]
+  @@index([userId])
 }
 
 model Scan {
@@ -33,8 +59,8 @@ model Scan {
   score       Int
   result      Json
   createdAt   DateTime @default(now())
-
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  @@index([businessId, createdAt])
 }
 
 model Opportunity {
@@ -48,8 +74,8 @@ model Opportunity {
   effort      Int
   status      String  @default("open")
   createdAt   DateTime @default(now())
-
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  @@index([businessId, status])
 }
 
 model PromptRun {
@@ -62,6 +88,6 @@ model PromptRun {
   position       Int?
   citations      Json?
   createdAt      DateTime @default(now())
-
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  @@index([businessId, createdAt])
 }

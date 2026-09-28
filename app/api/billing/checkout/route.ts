@@ -1,14 +1,3 @@
-import { NextResponse } from "next/server";
-
-export async function POST(req: Request) {
-  const { plan } = await req.json();
-  const allowed = ["solo","pro","agency"];
-  if (!allowed.includes(plan)) return NextResponse.json({error:"Invalid plan"}, {status:400});
-  if (!process.env.STRIPE_SECRET_KEY) {
-    return NextResponse.json({
-      mode:"setup_required",
-      message:"Stripe n'est pas encore configuré. Ajoutez STRIPE_SECRET_KEY et les price IDs."
-    });
-  }
-  return NextResponse.json({mode:"stripe_ready", plan});
-}
+import { NextResponse } from "next/server"; import Stripe from "stripe"; import { z } from "zod"; import { getCurrentUser } from "@/lib/auth"; import { prisma } from "@/lib/prisma";
+const schema=z.object({plan:z.enum(["solo","pro","agency"])});
+export async function POST(req:Request){ const user=await getCurrentUser(); if(!user)return NextResponse.json({error:"Unauthorized"},{status:401}); const key=process.env.STRIPE_SECRET_KEY; if(!key)return NextResponse.json({error:"Stripe is not configured"},{status:503}); try{const {plan}=schema.parse(await req.json()); const price={solo:process.env.STRIPE_PRICE_SOLO,pro:process.env.STRIPE_PRICE_PRO,agency:process.env.STRIPE_PRICE_AGENCY}[plan]; if(!price)return NextResponse.json({error:"Missing Stripe price for this plan"},{status:503}); const stripe=new Stripe(key); const session=await stripe.checkout.sessions.create({mode:"subscription",line_items:[{price,quantity:1}],customer_email:user.email,client_reference_id:user.id,metadata:{userId:user.id,plan},success_url:`${process.env.NEXT_PUBLIC_APP_URL||"http://localhost:3000"}/dashboard?billing=success`,cancel_url:`${process.env.NEXT_PUBLIC_APP_URL||"http://localhost:3000"}/pricing?billing=cancelled`}); return NextResponse.json({url:session.url});}catch(e){return NextResponse.json({error:e instanceof Error?e.message:"Stripe error"},{status:400});}}
