@@ -24,3 +24,17 @@ Do not build the next phase unless the previous phase produces evidence:
 - 10 paid reports
 - 5 active subscriptions
 - measurable activation
+
+
+## V1.5 — Control Center
+- WordPress connection UI
+- content browser/editor
+- explicit publish + snapshot + rollback
+- safer connector request validation
+- readiness terminology
+
+## V1.6
+- multi-provider visibility adapters
+- automated change suggestions with human approval
+- email alerts and report delivery
+- audit log and workspace roles

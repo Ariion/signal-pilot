@@ -60,3 +60,7 @@ Recommended production setup: PostgreSQL + AUTH_SECRET + NEXT_PUBLIC_APP_URL. St
 ## Netlify
 
 Set `DATABASE_URL`, `AUTH_SECRET` and `NEXT_PUBLIC_APP_URL` in Netlify. `OPENAI_API_KEY` is optional. The build command only generates Prisma and builds Next.js, so a database is not required just to deploy the public scan. When PostgreSQL is configured, run `npx prisma migrate deploy` as a release step. If you already have a database created outside Prisma Migrate, baseline it before applying migrations.
+
+
+## V1.5
+The V1.5 layer adds a WordPress Control Center: browse pages/posts, edit locally, prepare explicit actions, publish only after confirmation, and rollback from a stored snapshot. No AI API is required for the free scan.
