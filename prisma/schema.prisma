@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Business {
+  id          String   @id @default(cuid())
+  name        String
+  domain      String   @unique
+  url         String
+  industry    String?
+  city        String?
+  country     String?
+  description String?
+  facts       Json?
+  score       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  scans        Scan[]
+  opportunities Opportunity[]
+  promptRuns    PromptRun[]
+}
+
+model Scan {
+  id          String   @id @default(cuid())
+  businessId  String
+  status      String   @default("completed")
+  score       Int
+  result      Json
+  createdAt   DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model Opportunity {
+  id          String   @id @default(cuid())
+  businessId  String
+  title       String
+  description String
+  category    String
+  priority    String
+  impact      Int
+  effort      Int
+  status      String  @default("open")
+  createdAt   DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model PromptRun {
+  id             String   @id @default(cuid())
+  businessId     String
+  engine         String
+  query          String
+  response       String?
+  brandMentioned Boolean  @default(false)
+  position       Int?
+  citations      Json?
+  createdAt      DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
