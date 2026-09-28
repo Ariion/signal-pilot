@@ -48,6 +48,11 @@ export async function POST(req: Request) {
         prisma.opportunity.createMany({ data: all.map(o => ({ businessId: business.id, title: o.title, description: o.description, category: o.category, priority: o.priority, impact: o.impact, effort: o.effort })) }),
       ]);
       await materializeActions(business.id, all);
+      const queryLimit = getPlanLimits(user.plan).queries;
+      await prisma.monitoredQuery.createMany({
+        data: queries.slice(0, queryLimit).map(query => ({ businessId: business.id, query, provider: "unconfigured" })),
+        skipDuplicates: true
+      });
     }
 
     return NextResponse.json({ url, facts, score, opportunities: all, queries, mode: ai.mode, aiSummary: ai.summary, providerError: ai.providerError ?? null, persisted: Boolean(user) });
