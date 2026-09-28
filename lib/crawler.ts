@@ -59,6 +59,22 @@ export async function crawl(url: string): Promise<BusinessFacts> {
   const hasContact = /contact|contactez|nous joindre|get in touch/i.test(body) || links.some(x => /contact/i.test(x));
   const hasLocalSignals = /Paris|Lyon|Marseille|Bordeaux|Toulouse|Nantes|Lille|France/i.test(body);
   const origin = parsedFinal.origin;
+  const internal = [...new Set(links.map(x => { try { return new URL(x, origin).href; } catch { return ""; } }).filter(x => x.startsWith(origin) && new URL(x).pathname !== "/" && !x.includes("#")))].slice(0, 5);
+  let contentPages = 0; let sampledWords = 0;
+  for (const pageUrl of internal) {
+    try {
+      const page = await safeFetch(pageUrl, { headers: { "User-Agent": "SignalPilotBot/1.1", "Accept": "text/html,application/xhtml+xml" } });
+      const ct = page.headers.get("content-type") || "";
+      if (!page.ok || !ct.includes("text/html")) continue;
+      const reader = page.body?.getReader(); if (!reader) continue;
+      let bytes = 0; const parts: Uint8Array[] = [];
+      while (true) { const { value, done } = await reader.read(); if (done) break; bytes += value.byteLength; if (bytes > 500_000) { await reader.cancel(); break; } parts.push(value); }
+      if (!parts.length || bytes > 500_000) continue;
+      const page$ = cheerio.load(new TextDecoder().decode(Buffer.concat(parts)));
+      const text = page$("body").text().replace(/\s+/g, " ").trim();
+      if (text) { contentPages++; sampledWords += words(text).length; }
+    } catch {}
+  }
   const hasRobots = await smallProbe(`${origin}/robots.txt`); const hasSitemap = await smallProbe(`${origin}/sitemap.xml`);
-  return { name: title?.split("|")[0]?.split("—")[0]?.trim() || hostname, domain: hostname, title, description, phone, email, services, keywords: topKeywords(`${title} ${description ?? ""} ${body}`), pages: links.filter(x => x.startsWith("/") || x.startsWith(origin)).slice(0, 50), hasSchema: extractJsonLd($), hasFaq: /faq|questions fréquentes|questions frequentes/i.test(body), hasSitemap, hasRobots, hasContact, hasLocalSignals, wordCount: words(body).length, externalLinks: links.filter(x => /^https?:\/\//i.test(x) && !x.includes(hostname)).length };
+  return { name: title?.split("|")[0]?.split("—")[0]?.trim() || hostname, domain: hostname, title, description, phone, email, services, keywords: topKeywords(`${title} ${description ?? ""} ${body}`), pages: links.filter(x => x.startsWith("/") || x.startsWith(origin)).slice(0, 50), hasSchema: extractJsonLd($), hasFaq: /faq|questions fréquentes|questions frequentes/i.test(body), hasSitemap, hasRobots, hasContact, hasLocalSignals, wordCount: words(body).length, pagesSampled: internal.length, contentPages, avgPageWordCount: contentPages ? Math.round(sampledWords / contentPages) : 0, externalLinks: links.filter(x => /^https?:\/\//i.test(x) && !x.includes(hostname)).length };
 }
