@@ -1,80 +1,49 @@
-# SignalPilot V1
+# SignalPilot
 
-AI Visibility Autopilot — MVP commercialisable.
+SignalPilot is an AI visibility and website action SaaS for local businesses.
 
-## What is included
+## V1.3
+The product now has the foundations of an Autopilot loop:
 
-- Next.js App Router + TypeScript
-- Dark SaaS dashboard UI
-- Public landing page
-- Free website scanner
-- Deterministic business extraction
-- Explainable AI Visibility Score
-- Opportunity engine
-- Competitor/query planning
-- Report page
-- Prisma schema for PostgreSQL
-- Provider abstraction for LLM analysis
-- Optional OpenAI-compatible REST provider
-- Stripe-ready billing boundary
-- Cron-ready monitoring route
-- Security-minded URL validation
-- No fake AI claims: without external provider keys the app runs in DEMO mode
+`Scan → Score → Opportunities → Actions → Monitoring → Measure → Rescan`
 
-## Run locally
+Included:
+- Next.js + TypeScript + Prisma/PostgreSQL
+- accounts and sessions
+- persistent businesses and scans
+- action engine
+- monitoring runs
+- monitored queries
+- WordPress connector with encrypted credentials
+- explicit apply + before snapshot + rollback
+- provider-neutral AI visibility boundary
+- scheduled cron endpoint + GitHub Actions
+- SSRF/public-DNS protections
+- Stripe subscription boundary
 
-Requirements:
-- Node 20+
-- PostgreSQL if you want persistence
+## Install
 
 ```bash
 npm install
 cp .env.example .env
-npm run dev
-```
-
-Open http://localhost:3000
-
-## Production configuration
-
-Set:
-
-DATABASE_URL=postgresql://...
-OPENAI_API_KEY=...
-OPENAI_MODEL=gpt-5-mini
-NEXT_PUBLIC_APP_URL=https://your-domain.com
-
-The current V1 does not pretend to have direct first-party access to every AI search engine. `lib/ai/provider.ts` is the integration boundary. Add approved/search-provider adapters there when you have credentials.
-
-## Prisma
-
-```bash
-npx prisma generate
-npx prisma migrate dev --name init
-```
-
-## Stripe
-
-The checkout boundary is intentionally isolated in `app/api/billing/checkout/route.ts`.
-Add your Stripe price IDs and secret before enabling paid checkout.
-
-## Important product constraint
-
-The score is an internal diagnostic metric, not a guarantee that an AI will recommend a business. It measures observable signals available to SignalPilot.
-
-
-## V1.1 additions
-
-The current branch now includes a real SaaS foundation: account/session auth, user-owned businesses, persistent scan history, persistent opportunities, a server dashboard, scan rate limiting, SSRF-aware crawling, and Stripe subscription Checkout/webhook boundaries.
-
-After configuring PostgreSQL and `AUTH_SECRET`, run:
-
-```bash
-npm install
 npm run prisma:generate
-npx prisma migrate dev --name v11
+npx prisma migrate dev
 npm run typecheck
 npm run build
 ```
 
-Stripe subscriptions require `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, three recurring Price IDs, and `NEXT_PUBLIC_APP_URL`.
+## Environment
+See `.env.example`.
+
+For WordPress, use a WordPress Application Password, not the account password.
+
+For visibility measurement, configure `AI_VISIBILITY_ENDPOINT` and `AI_VISIBILITY_API_KEY`. Without them, the system records `unconfigured` and never fabricates AI mentions or citations.
+
+## Production notes
+- Use PostgreSQL.
+- Set a strong random `AUTH_SECRET`.
+- Keep all Stripe, connector and visibility-provider secrets server-side.
+- Use HTTPS.
+- Put the cron endpoint behind `CRON_SECRET`.
+- Replace synchronous monitoring with a real job queue as volume grows.
+- Add human approval UI before enabling any automatic publication policy.
