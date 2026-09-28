@@ -20,6 +20,7 @@ model User {
   updatedAt          DateTime      @updatedAt
   businesses         Business[]
   sessions           Session[]
+  leads              Lead[]
 }
 
 model Session {
@@ -198,4 +199,18 @@ model MonitoringRun {
   finishedAt  DateTime?
   business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   @@index([businessId, startedAt])
+}
+
+
+model Lead {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  domain    String?
+  source    String   @default("scan")
+  consentAt DateTime?
+  createdAt DateTime @default(now())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  @@index([createdAt])
+  @@index([userId])
 }

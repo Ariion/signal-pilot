@@ -47,3 +47,16 @@ For visibility measurement, configure `AI_VISIBILITY_ENDPOINT` and `AI_VISIBILIT
 - Put the cron endpoint behind `CRON_SECRET`.
 - Replace synchronous monitoring with a real job queue as volume grows.
 - Add human approval UI before enabling any automatic publication policy.
+
+
+## V1.4 — Zero API / Product-ready
+
+SignalPilot no longer depends on an AI API for the free scan. The deterministic crawler and scoring engine are the source of truth; an LLM is optional enrichment. Missing, invalid or unavailable AI credentials automatically fall back to standard analysis.
+
+Added: lead capture, scan plan limits, improved onboarding/progress states, richer report, working pricing checkout buttons, billing portal, multi-business dashboard presentation, and customer-facing error handling.
+
+Recommended production setup: PostgreSQL + AUTH_SECRET + NEXT_PUBLIC_APP_URL. Stripe and AI credentials are optional until their features are enabled.
+
+## Netlify
+
+Set `DATABASE_URL`, `AUTH_SECRET` and `NEXT_PUBLIC_APP_URL` in Netlify. `OPENAI_API_KEY` is optional. The build command only generates Prisma and builds Next.js, so a database is not required just to deploy the public scan. When PostgreSQL is configured, run `npx prisma migrate deploy` as a release step. If you already have a database created outside Prisma Migrate, baseline it before applying migrations.
