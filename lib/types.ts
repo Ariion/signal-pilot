@@ -18,6 +18,9 @@ export type BusinessFacts = {
   hasLocalSignals: boolean;
   wordCount: number;
   externalLinks: number;
+  pagesSampled?: number;
+  contentPages?: number;
+  avgPageWordCount?: number;
 };
 
 export type Opportunity = {
