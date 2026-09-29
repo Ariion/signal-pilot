@@ -6,6 +6,7 @@ import { BusinessFacts } from "./types";
 const STOP = new Set(["the","and","for","with","from","this","that","your","are","you","les","des","une","dans","pour","avec","sur","est","pas","qui","nous","vous"]);
 const MAX_BYTES = 2_500_000;
 const MAX_REDIRECTS = 4;
+const BROWSER_HEADERS = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36", "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8", "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.7" };
 
 function words(text: string) { return text.toLowerCase().replace(/[^a-zà-ÿ0-9 -]/gi, " ").split(/\s+/).filter(w => w.length >= 4 && !STOP.has(w)); }
 function topKeywords(text: string, limit = 12) { const counts = new Map<string, number>(); for (const w of words(text)) counts.set(w, (counts.get(w) ?? 0) + 1); return [...counts.entries()].sort((a,b) => b[1]-a[1]).slice(0, limit).map(([w]) => w); }
@@ -27,7 +28,8 @@ async function safeFetch(input: string, init: RequestInit = {}) {
   if (!['http:','https:'].includes(current.protocol)) throw new Error("Only HTTP(S) URLs are allowed");
   for (let i=0; i<=MAX_REDIRECTS; i++) {
     await assertPublicHost(current.hostname);
-    const res = await fetch(current, { ...init, redirect: "manual", signal: init.signal ?? AbortSignal.timeout(10_000) });
+    const headers = new Headers({ ...BROWSER_HEADERS, ...Object.fromEntries(new Headers(init.headers).entries()) });
+    const res = await fetch(current, { ...init, headers, redirect: "manual", signal: init.signal ?? AbortSignal.timeout(10_000) });
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get("location"); if (!loc) return res;
       current = new URL(loc, current); continue;
@@ -36,11 +38,14 @@ async function safeFetch(input: string, init: RequestInit = {}) {
   }
   throw new Error("Too many redirects");
 }
-async function smallProbe(url: string) { try { const r = await safeFetch(url, { headers: { "User-Agent": "SignalPilotBot/1.1" } }); return r.ok; } catch { return false; } }
+async function smallProbe(url: string) { try { const r = await safeFetch(url); return r.ok; } catch { return false; } }
 
 export async function crawl(url: string): Promise<BusinessFacts> {
-  const res = await safeFetch(url, { headers: { "User-Agent": "SignalPilotBot/1.1 (+https://signalpilot.example/bot)", "Accept": "text/html,application/xhtml+xml" } });
-  if (!res.ok) throw new Error(`Website returned HTTP ${res.status}`);
+  const res = await safeFetch(url);
+  if (!res.ok) {
+    if (res.status === 403) throw new Error("Le site cible refuse l’accès au scanner (HTTP 403). SignalPilot ne contourne pas les protections anti-bot ou CAPTCHA.");
+    throw new Error(`Website returned HTTP ${res.status}`);
+  }
   const type = res.headers.get("content-type") || "";
   if (!type.includes("text/html") && !type.includes("application/xhtml+xml")) throw new Error("The URL does not return an HTML page");
   const len = Number(res.headers.get("content-length") || 0); if (len > MAX_BYTES) throw new Error("The page is too large to scan");
@@ -59,6 +64,22 @@ export async function crawl(url: string): Promise<BusinessFacts> {
   const hasContact = /contact|contactez|nous joindre|get in touch/i.test(body) || links.some(x => /contact/i.test(x));
   const hasLocalSignals = /Paris|Lyon|Marseille|Bordeaux|Toulouse|Nantes|Lille|France/i.test(body);
   const origin = parsedFinal.origin;
+  const internal = [...new Set(links.map(x => { try { const u = new URL(x, origin); return u.origin === origin ? u.href : ""; } catch { return ""; } }).filter(x => x && new URL(x).pathname !== "/" && !x.includes("#")))].slice(0, 5);
+  let contentPages = 0; let sampledWords = 0;
+  for (const pageUrl of internal) {
+    try {
+      const page = await safeFetch(pageUrl);
+      const ct = page.headers.get("content-type") || "";
+      if (!page.ok || !ct.includes("text/html")) continue;
+      const reader = page.body?.getReader(); if (!reader) continue;
+      let bytes = 0; const parts: Uint8Array[] = [];
+      while (true) { const { value, done } = await reader.read(); if (done) break; bytes += value.byteLength; if (bytes > 500_000) { await reader.cancel(); break; } parts.push(value); }
+      if (!parts.length || bytes > 500_000) continue;
+      const page$ = cheerio.load(new TextDecoder().decode(Buffer.concat(parts)));
+      const text = page$("body").text().replace(/\s+/g, " ").trim();
+      if (text) { contentPages++; sampledWords += words(text).length; }
+    } catch {}
+  }
   const hasRobots = await smallProbe(`${origin}/robots.txt`); const hasSitemap = await smallProbe(`${origin}/sitemap.xml`);
-  return { name: title?.split("|")[0]?.split("—")[0]?.trim() || hostname, domain: hostname, title, description, phone, email, services, keywords: topKeywords(`${title} ${description ?? ""} ${body}`), pages: links.filter(x => x.startsWith("/") || x.startsWith(origin)).slice(0, 50), hasSchema: extractJsonLd($), hasFaq: /faq|questions fréquentes|questions frequentes/i.test(body), hasSitemap, hasRobots, hasContact, hasLocalSignals, wordCount: words(body).length, externalLinks: links.filter(x => /^https?:\/\//i.test(x) && !x.includes(hostname)).length };
+  return { name: title?.split("|")[0]?.split("—")[0]?.trim() || hostname, domain: hostname, title, description, phone, email, services, keywords: topKeywords(`${title} ${description ?? ""} ${body}`), pages: links.filter(x => x.startsWith("/") || x.startsWith(origin)).slice(0, 50), hasSchema: extractJsonLd($), hasFaq: /faq|questions fréquentes|questions frequentes/i.test(body), hasSitemap, hasRobots, hasContact, hasLocalSignals, wordCount: words(body).length, pagesSampled: internal.length, contentPages, avgPageWordCount: contentPages ? Math.round(sampledWords / contentPages) : 0, externalLinks: links.filter(x => { try { const u = new URL(x, origin); return /^https?:$/i.test(u.protocol) && u.origin !== origin; } catch { return false; } }).length };
 }

@@ -5,7 +5,7 @@ export default function PricingClient({ plan }: { plan: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   async function start() {
-    if (plan === "free") { window.location.href = "/scan"; return; }
+    if (plan === "free") { window.location.href = "/"; return; }
     setLoading(true); setError("");
     const res = await fetch("/api/billing/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plan }) });
     const data = await res.json();

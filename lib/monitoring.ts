@@ -1,42 +1,119 @@
-import { crawl } from "./crawler";
-import { generateOpportunities, generateQueries, scoreFacts } from "./scoring";
-import { prisma } from "./prisma";
-import { materializeActions } from "./action-engine";
-import { runVisibilityQuery } from "./visibility";
+import { prisma } from "@/lib/prisma";
+import { crawl } from "@/lib/crawler";
+import { generateOpportunities, generateQueries, scoreFacts } from "@/lib/scoring";
+import { materializeActions } from "@/lib/action-engine";
+import { getVisibilityProvider } from "@/lib/visibility/provider";
 
-export async function monitorBusiness(businessId: string) {
-  const business = await prisma.business.findUnique({ where: { id: businessId }, include: { monitoredQueries: { where: { active: true } } } });
+export async function runBusinessMonitoring(businessId: string) {
+  const business = await prisma.business.findUnique({ where: { id: businessId } });
   if (!business) throw new Error("Business not found");
-  const run = await prisma.monitoringRun.create({ data: { businessId, previousScore: business.score } });
+
+  const run = await prisma.monitoringRun.create({
+    data: { businessId, status: "running", previousScore: business.score },
+  });
+
   try {
     const facts = await crawl(business.url);
     const score = scoreFacts(facts);
     const opportunities = generateOpportunities(facts);
     const queries = generateQueries(facts);
-    const allQueries = [...new Set([...business.monitoredQueries.map(q => q.query), ...queries])].slice(0, 20);
-    const results = [];
-    for (const query of allQueries) {
-      const existing = business.monitoredQueries.find(q => q.query === query);
-      const result = await runVisibilityQuery({ query, brand: facts.name, domain: facts.domain });
-      results.push({ query, result });
-      if (existing) {
-        await prisma.monitoredQuery.update({ where: { id: existing.id }, data: { lastRunAt: new Date(), lastMentioned: result.brandMentioned, lastPosition: result.position, lastResponse: result.response, lastCitations: result.citations } });
-      } else {
-        await prisma.monitoredQuery.create({ data: { businessId, query, provider: result.provider, lastRunAt: new Date(), lastMentioned: result.brandMentioned, lastPosition: result.position, lastResponse: result.response, lastCitations: result.citations } });
-      }
-      await prisma.promptRun.create({ data: { businessId, engine: result.provider, query, response: result.response, brandMentioned: result.brandMentioned, position: result.position, citations: result.citations } });
-    }
-    const previous = await prisma.scan.findFirst({ where: { businessId }, orderBy: { createdAt: "desc" } });
-    const delta = score.total - (business.score || 0);
-    const createdActions = await materializeActions(businessId, opportunities);
+    const provider = getVisibilityProvider(process.env.AI_VISIBILITY_ENDPOINT ? "external" : undefined);
+
     await prisma.$transaction([
-      prisma.scan.create({ data: { businessId, score: score.total, result: { url: business.url, facts, score, opportunities, queries: allQueries, monitoring: results } } }),
-      prisma.business.update({ where: { id: businessId }, data: { score: score.total, facts, name: facts.name, description: facts.description, nextMonitorAt: new Date(Date.now() + business.monitorEveryHours * 3600_000) } }),
-      prisma.monitoringRun.update({ where: { id: run.id }, data: { status: "completed", newScore: score.total, delta, summary: `${delta >= 0 ? "+" : ""}${delta} point(s). ${createdActions.length} actions disponibles.`, finishedAt: new Date() } })
+      prisma.business.update({
+        where: { id: businessId },
+        data: {
+          facts,
+          score: score.total,
+          name: facts.name,
+          description: facts.description,
+          nextMonitorAt: business.monitoring
+            ? new Date(Date.now() + business.monitorEveryHours * 60 * 60 * 1000)
+            : null,
+        },
+      }),
+      prisma.scan.create({
+        data: {
+          businessId,
+          score: score.total,
+          result: { url: business.url, facts, score, opportunities, queries, mode: "monitoring" },
+        },
+      }),
+      prisma.opportunity.deleteMany({ where: { businessId, status: "open" } }),
+      prisma.opportunity.createMany({
+        data: opportunities.map((o) => ({
+          businessId,
+          title: o.title,
+          description: o.description,
+          category: o.category,
+          priority: o.priority,
+          impact: o.impact,
+          effort: o.effort,
+        })),
+      }),
+      prisma.monitoredQuery.createMany({
+        data: queries.map((query) => ({ businessId, query, provider: provider.name })),
+        skipDuplicates: true,
+      }),
     ]);
-    return { score, delta, opportunities, actions: createdActions, queries: results, previousScan: previous?.score ?? null };
+
+    const monitored = await prisma.monitoredQuery.findMany({
+      where: { businessId, active: true },
+      orderBy: { createdAt: "asc" },
+      take: 100,
+    });
+
+    const checks = [];
+    for (const query of monitored) {
+      const check = await provider.check(query.query, facts);
+      checks.push(check);
+      await prisma.monitoredQuery.update({
+        where: { id: query.id },
+        data: {
+          provider: check.provider,
+          lastRunAt: check.checkedAt,
+          lastMentioned: check.brandMentioned,
+          lastPosition: check.position,
+          lastResponse: check.response,
+          lastCitations: check.citations,
+        },
+      });
+      if (check.status !== "unconfigured") {
+        await prisma.promptRun.create({
+          data: {
+            businessId,
+            engine: check.provider,
+            query: check.query,
+            response: check.response,
+            brandMentioned: check.brandMentioned,
+            position: check.position,
+            citations: check.citations,
+          },
+        });
+      }
+    }
+
+    await materializeActions(businessId, opportunities);
+
+    const delta = score.total - business.score;
+    await prisma.monitoringRun.update({
+      where: { id: run.id },
+      data: {
+        status: "completed",
+        newScore: score.total,
+        delta,
+        summary: `Score ${business.score} → ${score.total}. ${opportunities.length} opportunités, ${checks.filter((c) => c.status === "completed").length} requêtes IA mesurées.`,
+        finishedAt: new Date(),
+      },
+    });
+
+    return { score, delta, opportunitiesCount: opportunities.length, visibilityChecks: checks.length, runId: run.id };
   } catch (error) {
-    await prisma.monitoringRun.update({ where: { id: run.id }, data: { status: "failed", error: error instanceof Error ? error.message : "Unknown error", finishedAt: new Date() } });
+    const message = error instanceof Error ? error.message : "Monitoring failed";
+    await prisma.monitoringRun.update({
+      where: { id: run.id },
+      data: { status: "failed", error: message, finishedAt: new Date() },
+    });
     throw error;
   }
 }

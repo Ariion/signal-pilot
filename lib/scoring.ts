@@ -20,7 +20,7 @@ export function scoreFacts(f: BusinessFacts) {
     Math.min(100, (f.title ? 25 : 0) + (f.description ? 25 : 0) + (f.name ? 20 : 0) + (f.keywords.length >= 8 ? 30 : f.keywords.length * 3));
 
   breakdown["Couverture de l'offre"] =
-    Math.min(100, f.services.length * 8 + (f.wordCount > 500 ? 20 : 0) + (f.hasFaq ? 20 : 0));
+    Math.min(100, f.services.length * 8 + (f.wordCount > 500 ? 20 : 0) + (f.hasFaq ? 20 : 0) + ((f.contentPages ?? 0) >= 2 ? 15 : 0));
 
   breakdown["Signaux locaux"] =
     (f.hasLocalSignals ? 60 : 15) + (f.phone ? 20 : 0) + (f.hasContact ? 20 : 0);
@@ -61,7 +61,7 @@ export function generateOpportunities(f: BusinessFacts): Opportunity[] {
   if (f.services.length < 5) o.push({title:"Décrire les services en détail",description:"Créer des pages ou sections dédiées aux services principaux, avec zones desservies, preuves et FAQ.",category:"Contenu",priority:"P1",impact:88,effort:45});
   if (!f.hasLocalSignals) o.push({title:"Renforcer les signaux locaux",description:"Rendre explicites ville, zones desservies, adresse et contexte géographique.",category:"Local",priority:"P2",impact:75,effort:25});
   if (f.externalLinks < 5) o.push({title:"Développer les sources externes",description:"Identifier des annuaires, partenaires, médias et organisations réellement pertinents.",category:"Autorité",priority:"P2",impact:70,effort:70});
-  if (f.wordCount < 800) o.push({title:"Enrichir les pages importantes",description:"Ajouter des informations utiles plutôt que du texte générique : preuves, cas, tarifs si publics, process et réponses.",category:"Contenu",priority:"P2",impact:68,effort:55});
+  if (f.wordCount < 800 || (f.contentPages ?? 0) < 2) o.push({title:"Enrichir les pages importantes",description:"Ajouter des informations utiles plutôt que du texte générique : preuves, cas, tarifs si publics, process et réponses.",category:"Contenu",priority:"P2",impact:68,effort:55});
   o.push({title:"Construire un jeu de requêtes IA local",description:"Surveiller les questions que des clients pourraient poser aux assistants IA sur votre secteur et votre zone.",category:"Monitoring",priority:"P2",impact:82,effort:30});
   o.push({title:"Comparer les concurrents",description:"Comparer les sources, services et contenus qui rendent d'autres entreprises plus faciles à recommander.",category:"Intelligence",priority:"P2",impact:78,effort:50});
   return o.sort((a,b) => b.impact - a.impact);
