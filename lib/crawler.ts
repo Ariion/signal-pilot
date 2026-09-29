@@ -27,7 +27,11 @@ async function safeFetch(input: string, init: RequestInit = {}) {
   if (!['http:','https:'].includes(current.protocol)) throw new Error("Only HTTP(S) URLs are allowed");
   for (let i=0; i<=MAX_REDIRECTS; i++) {
     await assertPublicHost(current.hostname);
-    const res = await fetch(current, { ...init, redirect: "manual", signal: init.signal ?? AbortSignal.timeout(10_000) });
+    const headers = new Headers(init.headers);
+    if (!headers.has("User-Agent")) headers.set("User-Agent", "Mozilla/5.0 (compatible; SignalPilotBot/1.2; +https://signalpilot.example/bot)");
+    if (!headers.has("Accept")) headers.set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+    if (!headers.has("Accept-Language")) headers.set("Accept-Language", "fr-FR,fr;q=0.9,en;q=0.7");
+    const res = await fetch(current, { ...init, headers, redirect: "manual", signal: init.signal ?? AbortSignal.timeout(10_000) });
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get("location"); if (!loc) return res;
       current = new URL(loc, current); continue;
